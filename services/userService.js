@@ -1,118 +1,190 @@
+const { db } = require('../config/database');
 const User = require('../models/User');
 
 class UserService {
-  constructor() {
-    this.users = new Map();
-    this.currentId = 1;
-    
-    // Add some initial data for testing
-    this.seedData();
-  }
-
-  seedData() {
-    const sampleUsers = [
-      { name: 'John Doe', email: 'john@example.com', age: 30 },
-      { name: 'Jane Smith', email: 'jane@example.com', age: 25 },
-      { name: 'Bob Johnson', email: 'bob@example.com', age: 35 }
-    ];
-
-    sampleUsers.forEach(userData => {
-      this.createUser(userData);
-    });
-  }
-
   // Create a new user
-  createUser(userData) {
+  async createUser(userData) {
+    // Validate input
     const validation = User.validate(userData);
-    
     if (!validation.isValid) {
       throw new Error(validation.errors.join(', '));
     }
 
-    // Check if email already exists
-    for (let user of this.users.values()) {
-      if (user.email.toLowerCase() === userData.email.toLowerCase()) {
-        throw new Error('Email already exists');
-      }
-    }
+    // SQL query to insert user
+    const query = `
+      INSERT INTO users (name, email, age)
+      VALUES ($1, $2, $3)
+      RETURNING *;
+    `;
 
-    const user = new User(
-      this.currentId++,
+    const values = [
       userData.name.trim(),
       userData.email.toLowerCase().trim(),
       userData.age
-    );
+    ];
 
-    this.users.set(user.id, user);
-    return user;
+    try {
+      const result = await db.query(query, values);
+      return result.rows[0];
+    } catch (error) {
+      // Handle duplicate email error
+      if (error.code === '23505') {
+        throw new Error('Email already exists');
+      }
+      throw error;
+    }
   }
 
   // Get all users
-  getAllUsers() {
-    return Array.from(this.users.values());
+  async getAllUsers() {
+    const query = 'SELECT * FROM users ORDER BY id ASC;';
+    
+    try {
+      const result = await db.query(query);
+      return result.rows;
+    } catch (error) {
+      throw new Error('Error fetching users: ' + error.message);
+    }
   }
 
   // Get user by ID
-  getUserById(id) {
-    const user = this.users.get(parseInt(id));
-    if (!user) {
-      throw new Error('User not found');
+  async getUserById(id) {
+    const query = 'SELECT * FROM users WHERE id = $1;';
+    
+    try {
+      const result = await db.query(query, [parseInt(id)]);
+      
+      if (result.rows.length === 0) {
+        throw new Error('User not found');
+      }
+      
+      return result.rows[0];
+    } catch (error) {
+      if (error.message === 'User not found') {
+        throw error;
+      }
+      throw new Error('Error fetching user: ' + error.message);
     }
-    return user;
   }
 
   // Update user
-  updateUser(id, userData) {
-    const user = this.getUserById(id);
+  async updateUser(id, userData) {
+    // First, get the existing user
+    const existingUser = await this.getUserById(id);
 
-    // Validate updated data
+    // Prepare data to validate
     const dataToValidate = {
-      name: userData.name !== undefined ? userData.name : user.name,
-      email: userData.email !== undefined ? userData.email : user.email,
-      age: userData.age !== undefined ? userData.age : user.age
+      name: userData.name !== undefined ? userData.name : existingUser.name,
+      email: userData.email !== undefined ? userData.email : existingUser.email,
+      age: userData.age !== undefined ? userData.age : existingUser.age
     };
 
+    // Validate
     const validation = User.validate(dataToValidate);
-    
     if (!validation.isValid) {
       throw new Error(validation.errors.join(', '));
     }
 
-    // Check if email is being changed and if it already exists
-    if (userData.email && userData.email.toLowerCase() !== user.email) {
-      for (let existingUser of this.users.values()) {
-        if (existingUser.id !== user.id && 
-            existingUser.email.toLowerCase() === userData.email.toLowerCase()) {
-          throw new Error('Email already exists');
-        }
-      }
-    }
+    // Build dynamic update query
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
 
-    // Update fields
     if (userData.name !== undefined) {
-      user.name = userData.name.trim();
-    }
-    if (userData.email !== undefined) {
-      user.email = userData.email.toLowerCase().trim();
-    }
-    if (userData.age !== undefined) {
-      user.age = userData.age;
+      updates.push(`name = $${paramCount}`);
+      values.push(userData.name.trim());
+      paramCount++;
     }
 
-    user.updatedAt = new Date();
-    return user;
+    if (userData.email !== undefined) {
+      updates.push(`email = $${paramCount}`);
+      values.push(userData.email.toLowerCase().trim());
+      paramCount++;
+    }
+
+    if (userData.age !== undefined) {
+      updates.push(`age = $${paramCount}`);
+      values.push(userData.age);
+      paramCount++;
+    }
+
+    // Add updated_at timestamp
+    updates.push(`updated_at = CURRENT_TIMESTAMP`);
+
+    // Add id to values array
+    values.push(parseInt(id));
+
+    // Build final query
+    const query = `
+      UPDATE users 
+      SET ${updates.join(', ')}
+      WHERE id = $${paramCount}
+      RETURNING *;
+    `;
+
+    try {
+      const result = await db.query(query, values);
+      
+      if (result.rows.length === 0) {
+        throw new Error('User not found');
+      }
+      
+      return result.rows[0];
+    } catch (error) {
+      // Handle duplicate email error
+      if (error.code === '23505') {
+        throw new Error('Email already exists');
+      }
+      throw error;
+    }
   }
 
   // Delete user
-  deleteUser(id) {
-    const user = this.getUserById(id);
-    this.users.delete(user.id);
-    return user;
+  async deleteUser(id) {
+    const query = 'DELETE FROM users WHERE id = $1 RETURNING *;';
+    
+    try {
+      const result = await db.query(query, [parseInt(id)]);
+      
+      if (result.rows.length === 0) {
+        throw new Error('User not found');
+      }
+      
+      return result.rows[0];
+    } catch (error) {
+      if (error.message === 'User not found') {
+        throw error;
+      }
+      throw new Error('Error deleting user: ' + error.message);
+    }
   }
 
   // Get users count
-  getUsersCount() {
-    return this.users.size;
+  async getUsersCount() {
+    const query = 'SELECT COUNT(*) as count FROM users;';
+    
+    try {
+      const result = await db.query(query);
+      return parseInt(result.rows[0].count);
+    } catch (error) {
+      throw new Error('Error counting users: ' + error.message);
+    }
+  }
+
+  // Search users by name or email
+  async searchUsers(searchTerm) {
+    const query = `
+      SELECT * FROM users 
+      WHERE name ILIKE $1 OR email ILIKE $1
+      ORDER BY id ASC;
+    `;
+    
+    try {
+      const result = await db.query(query, [`%${searchTerm}%`]);
+      return result.rows;
+    } catch (error) {
+      throw new Error('Error searching users: ' + error.message);
+    }
   }
 }
 

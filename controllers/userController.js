@@ -2,9 +2,9 @@ const userService = require('../services/userService');
 
 class UserController {
   // GET /api/users - Get all users
-  getAllUsers(req, res) {
+  async getAllUsers(req, res) {
     try {
-      const users = userService.getAllUsers();
+      const users = await userService.getAllUsers();
       res.status(200).json({
         success: true,
         count: users.length,
@@ -20,9 +20,9 @@ class UserController {
   }
 
   // GET /api/users/:id - Get user by ID
-  getUserById(req, res) {
+  async getUserById(req, res) {
     try {
-      const user = userService.getUserById(req.params.id);
+      const user = await userService.getUserById(req.params.id);
       res.status(200).json({
         success: true,
         data: user
@@ -45,10 +45,10 @@ class UserController {
   }
 
   // POST /api/users - Create new user
-  createUser(req, res) {
+  async createUser(req, res) {
     try {
       const { name, email, age } = req.body;
-      const user = userService.createUser({ name, email, age });
+      const user = await userService.createUser({ name, email, age });
       
       res.status(201).json({
         success: true,
@@ -75,10 +75,10 @@ class UserController {
   }
 
   // PUT /api/users/:id - Update user (full update)
-  updateUser(req, res) {
+  async updateUser(req, res) {
     try {
       const { name, email, age } = req.body;
-      const user = userService.updateUser(req.params.id, { name, email, age });
+      const user = await userService.updateUser(req.params.id, { name, email, age });
       
       res.status(200).json({
         success: true,
@@ -111,10 +111,10 @@ class UserController {
   }
 
   // PATCH /api/users/:id - Partial update user
-  patchUser(req, res) {
+  async patchUser(req, res) {
     try {
       const updates = req.body;
-      const user = userService.updateUser(req.params.id, updates);
+      const user = await userService.updateUser(req.params.id, updates);
       
       res.status(200).json({
         success: true,
@@ -147,9 +147,9 @@ class UserController {
   }
 
   // DELETE /api/users/:id - Delete user
-  deleteUser(req, res) {
+  async deleteUser(req, res) {
     try {
-      const user = userService.deleteUser(req.params.id);
+      const user = await userService.deleteUser(req.params.id);
       res.status(200).json({
         success: true,
         message: 'User deleted successfully',
@@ -169,6 +169,34 @@ class UserController {
           message: error.message
         });
       }
+    }
+  }
+
+  // GET /api/users/search?q=searchTerm - Search users
+  async searchUsers(req, res) {
+    try {
+      const searchTerm = req.query.q;
+      
+      if (!searchTerm) {
+        return res.status(400).json({
+          success: false,
+          error: 'Bad Request',
+          message: 'Search term (q) is required'
+        });
+      }
+
+      const users = await userService.searchUsers(searchTerm);
+      res.status(200).json({
+        success: true,
+        count: users.length,
+        data: users
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: 'Server Error',
+        message: error.message
+      });
     }
   }
 }

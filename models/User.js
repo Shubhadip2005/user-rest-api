@@ -1,11 +1,11 @@
 class User {
-  constructor(id, name, email, age) {
+  constructor(id, name, email, age, created_at, updated_at) {
     this.id = id;
     this.name = name;
     this.email = email;
     this.age = age;
-    this.createdAt = new Date();
-    this.updatedAt = new Date();
+    this.created_at = created_at;
+    this.updated_at = updated_at;
   }
 
   // Validation methods
