@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/userController');
 
+// GET /api/users/search?q=searchTerm - Search users (must be before /:id route)
+router.get('/search', userController.searchUsers.bind(userController));
+
 // GET /api/users - Get all users
 router.get('/', userController.getAllUsers.bind(userController));
 
